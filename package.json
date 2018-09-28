@@ -1,14 +1,28 @@
 {
-  "name": "fabricjs",
-  "version": "0.1.0",
-  "private": true,
+  "name": "muse-ui-fabric",
+  "version": "0.1.1",
+  "main": "dist/muse-ui-fabric.umd.min.js",
   "scripts": {
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
+    "build-bundle": "vue-cli-service build --mode production --target lib ./src/components/index.js",
     "lint": "vue-cli-service lint"
   },
+  "author": "Alone",
+  "license": "ISC",
+  "keywords": [
+    "muse ui",
+    "fabric",
+    "canvas",
+    "poster"
+  ],
   "dependencies": {
-    "vue": "^2.5.17"
+    "fabric": "^2.4.0",
+    "muse-ui": "^3.0.1",
+    "pify": "^4.0.0",
+    "uuid": "^3.3.2",
+    "vue": "^2.5.17",
+    "vue-color": "^2.6.0"
   },
   "devDependencies": {
     "@vue/cli-plugin-babel": "^3.0.3",
@@ -18,5 +32,9 @@
     "less": "^3.0.4",
     "less-loader": "^4.1.0",
     "vue-template-compiler": "^2.5.17"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhouxianjun/muse-ui-fabric.git"
   }
 }

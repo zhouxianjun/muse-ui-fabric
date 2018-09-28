@@ -1,8 +1,12 @@
-import Vue from 'vue'
-import App from './App.vue'
+import Vue from 'vue';
+import App from './App.vue';
+import MuseUI from 'muse-ui';
 
-Vue.config.productionTip = false
+import 'muse-ui/dist/muse-ui.css';
+
+Vue.use(MuseUI);
+Vue.config.productionTip = false;
 
 new Vue({
-  render: h => h(App)
-}).$mount('#app')
+    render: h => h(App)
+}).$mount('#app');

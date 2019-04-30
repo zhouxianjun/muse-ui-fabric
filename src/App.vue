@@ -34,7 +34,7 @@ export default {
         };
     },
     created () {
-        // this.json = localStorage.getItem('Kanvas');
+        this.json = localStorage.getItem('Kanvas');
     },
     methods: {
         save (json, img) {

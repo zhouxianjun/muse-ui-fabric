@@ -24,6 +24,7 @@
             <mu-button icon color="primary" @click="save">
                 <mu-icon value="save"></mu-icon>
             </mu-button>
+            <slot name="tools" :selection="selection"></slot>
         </div>
         <mu-bottom-sheet :open.sync="openBackground" :overlay="true" style="opacity: 0.8">
             <mu-list>
@@ -50,6 +51,10 @@
                 <mu-list-item v-if="!!currentBackgroundImg">
                     <label style="width: 40px;">透明</label>
                     <mu-slider style="margin-bottom: 0;" v-model="backgroundImageOpacity" @change="setBackgroundProp({opacity: Number($event) / 100})"></mu-slider>
+                </mu-list-item>
+                <mu-list-item v-if="!!currentBackgroundImg">
+                    <label style="width: 40px;">模式</label>
+                    <mu-radio v-for="mode in resizeModes" :key="mode.value" v-model="backgroundImageResizeMode" style="margin-right: 16px;" :value="mode.value" :label="mode.title"></mu-radio>
                 </mu-list-item>
                 <mu-list-item button v-if="!!currentBackgroundImg" @click="deleteBackgroundImg">
                     <mu-list-item-action>
@@ -131,6 +136,7 @@
                     <label style="width: 40px;">间距</label>
                     <mu-slider style="margin-bottom: 0;" :min="-100" :max="800" v-model="c_charSpacing" @change="c_charSpacingHandler"></mu-slider>
                 </mu-list-item>
+                <slot name="setting" :hasText="hasText" :hasRadius="hasRadius" :selection="selection"></slot>
             </mu-list>
         </mu-popover>
     </div>
@@ -142,9 +148,7 @@ import FileSelect from '@/components/file-select.vue';
 import { Sketch } from 'vue-color';
 const propHandler = function (val, k, t) { this.setActiveProp(k, val); };
 const styleHandler = function (val, k, t) {
-    const s = {};
-    s[k] = val;
-    this.setActiveStyle(s);
+    this.setActiveStyle({ [k]: val });
 };
 const CHANGE_PROP_FIELD = {
     fontFamily: { handler: propHandler, type: 'i-text' },
@@ -179,6 +183,7 @@ const CHANGE_PROP_FIELD = {
         type: 'i-text'
     }
 };
+const ResizeMode = { cover: 1, contain: 2, stretch: 3 };
 export default {
     name: 'MuFabric',
     components: {
@@ -243,7 +248,15 @@ export default {
             backgroundImageRadius: 0,
             backgroundImageRadiusMax: 0,
             backgroundImageOpacity: 100,
+            backgroundImageResizeMode: ResizeMode.contain,
             moving: false,
+            resizeModes: [{
+                title: '覆盖', value: ResizeMode.cover
+            }, {
+                title: '包含', value: ResizeMode.contain
+            }, {
+                title: '拉伸', value: ResizeMode.stretch
+            }],
             ...Reflect.ownKeys(CHANGE_PROP_FIELD).reduce((r, k) => {
                 const t = CHANGE_PROP_FIELD[k];
                 r[`c_${k}`] = t.default;
@@ -293,11 +306,13 @@ export default {
         },
         colors (val) {
             if (!this.selection) {
-                this.canvas.setBackgroundColor(this.rgba);
-                this.canvas.requestRenderAll();
+                this.canvas.setBackgroundColor(this.rgba, this.canvas.renderAll.bind(this.canvas));
             } else {
                 this.setActiveStyle({ fill: this.rgba });
             }
+        },
+        backgroundImageResizeMode () {
+            this.setBackgroundImage(this.currentBackgroundImg);
         }
     },
     mounted () {
@@ -335,17 +350,11 @@ export default {
             if (val) {
                 const json = typeof val === 'string' ? JSON.parse(val) : val;
                 if (json.background) {
-                    await this.pify(this.canvas.setBackgroundColor, json.background);
+                    this.canvas.setBackgroundColor(json.background, this.canvas.renderAll.bind(this.canvas));
                 }
                 if (json.backgroundImage) {
                     const img = await this.loadImg(json.backgroundImage.src, json.backgroundImage);
-                    this.backgroundImageRadius = json.backgroundImage._radius;
-                    this.backgroundImageRadiusMax = json.backgroundImage._radiusMax;
-                    img.set({
-                        clipTo: ctx => ctx.arc(0, 0, this.backgroundImageRadius, 0, Math.PI * 2, true)
-                    });
-                    this.currentBackgroundImg = img;
-                    this.canvas.setBackgroundImage(img, this.canvas.renderAll.bind(this.canvas));
+                    this.setBackgroundImage(img, json.backgroundImage);
                 }
                 if (Array.isArray(json.objects)) {
                     await this.loadData(json.objects);
@@ -377,7 +386,7 @@ export default {
                 active.bringToFront();
             } else {
                 const objects = this.canvas.getActiveObjects();
-                this.canvas.discardActiveObject();
+                this.canvas.discardActiveObject(null);
                 objects.forEach(object => object.bringToFront());
             }
         },
@@ -387,7 +396,7 @@ export default {
                 active.sendToBack();
             } else {
                 const objects = this.canvas.getActiveObjects();
-                this.canvas.discardActiveObject();
+                this.canvas.discardActiveObject(null);
                 objects.forEach(object => object.sendToBack());
             }
         },
@@ -442,12 +451,15 @@ export default {
         },
         async addImg (url, options = {}) {
             const id = uuid();
+            const { left, top, scaleX, scaleY } = { scaleX: 0.5, scaleY: 0.5, ...options };
             const img = await this.loadImg(url, options);
-            const max = options._radiusMax || this.imageMaxRange(img);
+            const max = this.imageMaxRange(img);
             this.radius[id] = { val: options._radius || max, max };
-            img.scale(0.5).set({
-                left: this.canvas.width / 2 - img.width / 4,
-                top: this.canvas.height / 2 - img.height / 4,
+            img.set({
+                scaleX,
+                scaleY,
+                left: left || this.canvas.width / 2 - img.width * scaleX / 2,
+                top: top || this.canvas.height / 2 - img.height * scaleY / 2,
                 clipTo: ctx => ctx.arc(0, 0, this.radius[img.id].val, 0, Math.PI * 2, true),
                 id
             });
@@ -470,7 +482,7 @@ export default {
                 this.remove(active);
             } else {
                 const objects = this.canvas.getActiveObjects();
-                this.canvas.discardActiveObject();
+                this.canvas.discardActiveObject(null);
                 objects.forEach(object => this.remove(object));
             }
         },
@@ -495,13 +507,31 @@ export default {
         },
         async changeBackgroundImage (files) {
             const result = await this.readFile(files[0]);
-            const img = await this.pifyBind(fabric.Image.fromURL, fabric.Image, result.target.result);
-            this.backgroundImageRadius = this.backgroundImageRadiusMax = this.imageMaxRange(img);
+            const img = await this.loadImg(result.target.result);
+            this.setBackgroundImage(img);
+        },
+        setBackgroundImage (img, opt = {}) {
+            const { _radius, _resizeMode, _opacity } = opt;
+            this.backgroundImageRadiusMax = this.imageMaxRange(img);
+            this.backgroundImageRadius = _radius || this.backgroundImageRadiusMax;
+            this.backgroundImageResizeMode = _resizeMode || this.backgroundImageResizeMode;
+            const { width, height } = this.canvas;
+            const scaleX = width / img.width;
+            const scaleY = height / img.height;
+            if (this.backgroundImageResizeMode === ResizeMode.stretch) {
+                img.set({ scaleX, scaleY, left: 0, top: 0 });
+            } else {
+                const isCover = this.backgroundImageResizeMode === ResizeMode.cover;
+                const scale = isCover ? Math.max(scaleX, scaleY) : Math.min(scaleX, scaleY);
+                img.scale(scale).set({
+                    left: width / 2 - img.width * scale / 2,
+                    top: height / 2 - img.height * scale / 2
+                });
+            }
             this.canvas.setBackgroundImage(img, this.canvas.renderAll.bind(this.canvas), {
-                scaleX: this.canvas.width / img.width,
-                scaleY: this.canvas.height / img.height,
                 originX: 'left',
                 originY: 'top',
+                opacity: _opacity || 1,
                 clipTo: ctx => ctx.arc(0, 0, this.backgroundImageRadius, 0, Math.PI * 2, true)
             });
             this.currentBackgroundImg = img;
@@ -524,7 +554,7 @@ export default {
         },
         addAndSelect (obj) {
             this.canvas.add(obj);
-            this.canvas.discardActiveObject().requestRenderAll();
+            this.canvas.discardActiveObject(null).requestRenderAll();
             this.canvas.setActiveObject(obj);
         },
         async save () {
@@ -538,11 +568,11 @@ export default {
                 const json = this.canvas.toJSON(['id']);
                 if (json.backgroundImage) {
                     json.backgroundImage._radius = this.backgroundImageRadius;
-                    json.backgroundImage._radiusMax = this.backgroundImageRadiusMax;
+                    json.backgroundImage._resizeMode = this.backgroundImageResizeMode;
+                    json.backgroundImage._opacity = this.backgroundImageOpacity;
                 }
                 json.objects.filter(o => o.type === 'image' && Reflect.has(this.radius, o.id)).forEach(o => {
                     o._radius = this.radius[o.id].val;
-                    o._radiusMax = this.radius[o.id].max;
                     Reflect.deleteProperty(o, 'id');
                 });
                 this.onSave(json, this.canvas.toDataURL('png'));
@@ -558,7 +588,8 @@ export default {
             this.openColor = true;
         },
         imageMaxRange (img) {
-            return Math.sqrt(Math.pow(img.height, 2) + Math.pow(img.width, 2)) / 2;
+            const { width, height } = img;
+            return Math.sqrt(Math.pow(height, 2) + Math.pow(width, 2)) / 2;
         },
         async pify (fn, ...args) {
             const result = await this.pifyBind(fn, this.canvas, ...args);

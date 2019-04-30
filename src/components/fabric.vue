@@ -338,14 +338,14 @@ export default {
                     await this.pify(this.canvas.setBackgroundColor, json.background);
                 }
                 if (json.backgroundImage) {
-                    const img = await this.pifyBind(fabric.Image.fromURL, fabric.Image, json.backgroundImage.src);
+                    const img = await this.loadImg(json.backgroundImage.src, json.backgroundImage);
                     this.backgroundImageRadius = json.backgroundImage._radius;
                     this.backgroundImageRadiusMax = json.backgroundImage._radiusMax;
-                    img.set(Object.assign(json.backgroundImage, {
+                    img.set({
                         clipTo: ctx => ctx.arc(0, 0, this.backgroundImageRadius, 0, Math.PI * 2, true)
-                    }));
+                    });
                     this.currentBackgroundImg = img;
-                    this.canvas.setBackgroundImage(img);
+                    this.canvas.setBackgroundImage(img, this.canvas.renderAll.bind(this.canvas));
                 }
                 if (Array.isArray(json.objects)) {
                     await this.loadData(json.objects);
@@ -432,16 +432,25 @@ export default {
                 this.$refs.colors.colorChange(this.selection.fill);
             }
         },
+        async loadImg (url, options = {}) {
+            return new Promise(resolve => {
+                fabric.Image.fromURL(url, img => resolve(img), {
+                    ...this.optionsOfType('image'),
+                    ...options
+                });
+            });
+        },
         async addImg (url, options = {}) {
-            const img = await this.pifyBind(fabric.Image.fromURL, fabric.Image, url);
             const id = uuid();
+            const img = await this.loadImg(url, options);
             const max = options._radiusMax || this.imageMaxRange(img);
             this.radius[id] = { val: options._radius || max, max };
-            img.scale(0.5).set(Object.assign(this.optionsOfType('image'), {
+            img.scale(0.5).set({
                 left: this.canvas.width / 2 - img.width / 4,
                 top: this.canvas.height / 2 - img.height / 4,
-                clipTo: ctx => ctx.arc(0, 0, this.radius[img.id].val, 0, Math.PI * 2, true)
-            }, options, { id }));
+                clipTo: ctx => ctx.arc(0, 0, this.radius[img.id].val, 0, Math.PI * 2, true),
+                id
+            });
             this.addAndSelect(img);
         },
         addText (content = 'text', options = {}) {
@@ -488,16 +497,14 @@ export default {
             const result = await this.readFile(files[0]);
             const img = await this.pifyBind(fabric.Image.fromURL, fabric.Image, result.target.result);
             this.backgroundImageRadius = this.backgroundImageRadiusMax = this.imageMaxRange(img);
-            img.set({
-                width: this.canvas.width,
-                height: this.canvas.height,
+            this.canvas.setBackgroundImage(img, this.canvas.renderAll.bind(this.canvas), {
+                scaleX: this.canvas.width / img.width,
+                scaleY: this.canvas.height / img.height,
                 originX: 'left',
                 originY: 'top',
                 clipTo: ctx => ctx.arc(0, 0, this.backgroundImageRadius, 0, Math.PI * 2, true)
             });
             this.currentBackgroundImg = img;
-            this.canvas.setBackgroundImage(img);
-            this.canvas.requestRenderAll();
         },
         setBackgroundProp (prop) {
             if (this.currentBackgroundImg) {
